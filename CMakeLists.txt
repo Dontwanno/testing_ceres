@@ -15,6 +15,7 @@ target_link_libraries(test_quat_inv PRIVATE Ceres::ceres)
 
 find_package(Eigen3 CONFIG REQUIRED)
 target_link_libraries(testing PRIVATE Eigen3::Eigen)
+target_link_libraries(testglm PRIVATE Eigen3::Eigen)
 
 find_package(urdfdom CONFIG REQUIRED)
 target_link_libraries(testing PRIVATE urdfdom::urdf_parser urdfdom::urdfdom_model urdfdom::urdfdom_world urdfdom::urdfdom_sensor)

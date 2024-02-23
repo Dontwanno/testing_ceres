@@ -1,9 +1,11 @@
+#include "parse_urdf.h"
 #include "glm/glm.hpp"
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/quaternion.hpp"
 # include <glm/gtx/string_cast.hpp>
-#include "parse_urdf.h"
 #include <array>
+#include <vector>
+#include <Eigen/Dense>
 
 
 void append_joint(std::vector<std::array<double, 3>>& axes, std::vector<std::array<double, 4>>& quaternions, std::vector<std::array<double, 3>>& positions, const urdf::JointConstSharedPtr& joint)
@@ -54,16 +56,6 @@ void fill_joints(const urdf::LinkConstSharedPtr& link, std::vector<std::array<do
     }
 }
 
-std::vector<double> random_angles()
-{
-    std::vector<double> angles;
-    for (int i = 0; i < 6; i++)
-    {
-        angles.push_back((double)rand() / RAND_MAX * 2 * 3.14159 - 3.14159);
-    }
-    return angles;
-}
-
 void printmat(glm::mat4 const& mat)
 {
     for (int i = 0; i < 4; i++)
@@ -72,6 +64,40 @@ void printmat(glm::mat4 const& mat)
         std::cout << glm::to_string(row) << std::endl;
     }
 }
+
+void eigencalc(const std::vector<std::array<double, 3>>& _axes,
+                const std::vector<std::array<double, 4>>& _quaternions,
+                const std::vector<std::array<double, 3>>& _positions,
+                const std::vector<double>& thetas)
+{
+    auto transform = Eigen::Transform<double, 3, Eigen::Affine>::Identity();
+
+    for (int i = 0; i < _axes.size(); i++)
+    {
+        Eigen::Vector<double, 3> p = Eigen::Vector<double, 3>(double(_positions[i][0]), double(_positions[i][1]), double(_positions[i][2]));
+
+        Eigen::Quaternion<double> q = Eigen::Quaternion<double>(double(_quaternions[i][0]), double(_quaternions[i][1]), double(_quaternions[i][2]), double(_quaternions[i][3]));
+
+        // apply translation
+        transform.translate(p);
+
+        // apply first rotation
+        transform.rotate(q);
+
+        Eigen::Vector<double, 3> axis = Eigen::Vector<double, 3>(double(_axes[i][0]), double(_axes[i][1]), double(_axes[i][2]));
+        Eigen::AngleAxis<double> angle_axis(thetas[i], axis);
+        // apply second rotation
+        transform.rotate(angle_axis.toRotationMatrix());
+    }
+    Eigen::Vector<double, 3> p = transform.translation();
+    auto rotation = transform.rotation();
+    std::cout << "rotation:" << rotation(0) << " " << rotation(1) << " " << rotation(2) << std::endl;
+    std::cout << "rotation2: " << rotation(3) << " " << rotation(4) << " " << rotation(5) << std::endl;
+    std::cout << "rotation3: " << rotation(6) << " " << rotation(7) << " " << rotation(8) << std::endl;
+    std::cout << "Transform: " << std::endl << transform.matrix() << std::endl;
+}
+
+
 
 int main(int argc, char* argv[])
 {
@@ -91,7 +117,7 @@ int main(int argc, char* argv[])
 
 
     double pi = glm::pi<double>();
-    std::vector<double> angles = {0, 0, 0, 0, -pi/2, -pi/2};
+    std::vector<double> angles = {pi/2, 0, 0, 0, -pi/2, -pi/2};
 
     glm::mat4 transform = glm::mat4(1.0f);
 
@@ -115,6 +141,9 @@ int main(int argc, char* argv[])
     glm::vec3 transformed_link = glm::vec3(transform * glm::vec4(link, 1.0f));
 
     std::cout << "transformed link" << glm::to_string(transformed_link) << std::endl;
+
+
+    eigencalc(axes, quaternions, positions, angles);
 
     return 0;
 }

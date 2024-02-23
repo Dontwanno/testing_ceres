@@ -200,9 +200,6 @@ struct old_CostFunctor {
 
         ceres::QuaternionProduct(q_inv, q_target, q_error);
 
-        T q_error_inverse[4];
-        // QuaternionInverse(q_error, q_error_inverse);
-
         residuals[3] = q_error[0];
         residuals[4] = q_error[1];
         residuals[5] = q_error[2];
@@ -281,7 +278,7 @@ void ceres_executer()
 
     // ... set up your robot model ...
     urdf::ModelInterfaceSharedPtr robot;
-    parse_urdf("../3_link.xml", robot);
+    parse_urdf("../6_link.xml", robot);
 
     const auto root = robot->getRoot();
 
@@ -290,9 +287,9 @@ void ceres_executer()
 
     double mypi = glm::pi<double>();
 
-    std::vector<double> angles = {0.0, 0.0, 0.0, 0.0, 0.0, -mypi/2};
-    std::vector<double> initial_angles = {0.0, 0.0, 0.0, 0.0, 0.0, mypi/2};
-    const std::vector<double> target_pos = {-1.0, 0.0, 5.0};
+    std::vector<double> angles = {0.0, 0.0, 0.0, 0.0, 0, 0};
+    std::vector<double> initial_angles = {0.0, 0.0, 0.0, 0.0, -mypi/2, -mypi/2};
+    const std::vector<double> target_pos = {-1.0, 0.0, 4.0};
     const std::vector<double> target_or = {0, 0.0, 1, 0};
 
 

@@ -64,14 +64,57 @@ std::vector<double> random_angles()
     return angles;
 }
 
+void printmat(glm::mat4 const& mat)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        glm::vec4 row = glm::transpose(mat)[i];
+        std::cout << glm::to_string(row) << std::endl;
+    }
+}
+
 int main(int argc, char* argv[])
 {
-    auto theta = random_angles();
 
-    for (int i = 0; i < 6; i++)
+    std::vector<std::array<double, 3>> axes;
+    std::vector<std::array<double, 4>> quaternions;
+    std::vector<std::array<double, 3>> positions;
+
+    // ... set up your robot model ...
+    urdf::ModelInterfaceSharedPtr robot;
+    parse_urdf("../6_link.xml", robot);
+
+    const auto root = robot->getRoot();
+
+    //recursively go through the tree to append axes, quaternions, and positions
+    fill_joints(root, axes, quaternions, positions);
+
+
+    double pi = glm::pi<double>();
+    std::vector<double> angles = {0, 0, 0, 0, -pi/2, -pi/2};
+
+    glm::mat4 transform = glm::mat4(1.0f);
+
+    for (int i = 0; i < axes.size(); i++)
     {
-        std::cout << theta[i] << std::endl;
+        glm::vec3 position = glm::vec3(positions[i][0], positions[i][1], positions[i][2]);
+        transform = glm::translate(transform, position);
+
+        glm::quat q = glm::quat(quaternions[i][0], quaternions[i][1], quaternions[i][2], quaternions[i][3]);
+        std::cout << glm::to_string(q) << std::endl;
+        transform = transform * glm::toMat4(q);
+
+        glm::vec3 axis = glm::vec3(axes[i][0], axes[i][1], axes[i][2]);
+        transform = glm::rotate(transform, (float)angles[i], axis);
     }
+
+    printmat(transform);
+
+    glm::vec3 link = glm::vec3(0, 0, 1);
+
+    glm::vec3 transformed_link = glm::vec3(transform * glm::vec4(link, 1.0f));
+
+    std::cout << "transformed link" << glm::to_string(transformed_link) << std::endl;
 
     return 0;
 }

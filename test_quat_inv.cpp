@@ -62,6 +62,10 @@ struct CostFunctor {
         residuals[1] = T(_x[1]) - p[1];
         residuals[2] = T(_x[2]) - p[2];
 
+        residuals[0] *= 10;
+        residuals[1] *= 10;
+        residuals[2] *= 10;
+
         // 1. Get calculated orientation
         Eigen::Quaternion<T> calculated_orientation(transform.rotation());
 
@@ -286,34 +290,40 @@ void ceres_executer()
 
     double mypi = glm::pi<double>();
 
-    std::vector<double> angles = {0.0, 0.0, 0.0};
-    const std::vector<double> target_pos = {-1.0, 0.0, 1.0};
+    std::vector<double> angles = {0.0, 0.0, 0.0, 0.0, 0.0, -mypi/2};
+    std::vector<double> initial_angles = {0.0, 0.0, 0.0, 0.0, 0.0, mypi/2};
+    const std::vector<double> target_pos = {-1.0, 0.0, 5.0};
     const std::vector<double> target_or = {0, 0.0, 1, 0};
 
 
     ceres::Problem problem;
 
     ceres::CostFunction* cost_function =
-        // new ceres::AutoDiffCostFunction<CostFunctor, 7, 3>(new CostFunctor(axes, quaternions, positions, target_pos.data(), target_or.data()));
-        new ceres::AutoDiffCostFunction<CostFunctor, 7, 3>(new CostFunctor(axes, quaternions, positions, target_pos.data(), target_or.data()));
+        new ceres::AutoDiffCostFunction<CostFunctor, 7, 6>(new CostFunctor(axes, quaternions, positions, target_pos.data(), target_or.data()));
 
     problem.AddResidualBlock(cost_function, nullptr, angles.data());
 
     problem.SetParameterLowerBound(angles.data(), 0, -3.14159);
     problem.SetParameterLowerBound(angles.data(), 1, -3.14159);
     problem.SetParameterLowerBound(angles.data(), 2, -3.14159);
+    problem.SetParameterLowerBound(angles.data(), 3, -3.14159);
+    problem.SetParameterLowerBound(angles.data(), 4, -3.14159);
+    problem.SetParameterLowerBound(angles.data(), 5, -3.14159);
 
     problem.SetParameterUpperBound(angles.data(), 0, 3.14159);
     problem.SetParameterUpperBound(angles.data(), 1, 3.14159);
     problem.SetParameterUpperBound(angles.data(), 2, 3.14159);
+    problem.SetParameterUpperBound(angles.data(), 3, 3.14159);
+    problem.SetParameterUpperBound(angles.data(), 4, 3.14159);
+    problem.SetParameterUpperBound(angles.data(), 5, 3.14159);
 
 
     ceres::Solver::Options options;
     // ... configure solver options ...
     // options.trust_region_strategy_type = ceres::DOGLEG;
     options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-    options.function_tolerance = 1e-16;
-    options.parameter_tolerance = 1e-16;
+    // options.function_tolerance = 1e-16;
+    // options.parameter_tolerance = 1e-16;
     options.linear_solver_type = ceres::DENSE_QR;
     options.minimizer_progress_to_stdout = true;
 
@@ -340,6 +350,27 @@ void ceres_executer()
 
         glm::vec3 axis = glm::vec3(axes[i][0], axes[i][1], axes[i][2]);
         transform = glm::rotate(transform, (float)angles[i], axis);
+    }
+
+
+    for (int i = 0; i < 4; i++)
+    {
+        glm::vec4 row = transpose(transform)[i];
+        std::cout << glm::to_string(row) << std::endl;
+    }
+
+    transform = glm::mat4(1.0f);
+
+    for (int i = 0; i < axes.size(); i++)
+    {
+        glm::vec3 position = glm::vec3(positions[i][0], positions[i][1], positions[i][2]);
+        transform = glm::translate(transform, position);
+
+        glm::quat q = glm::quat(quaternions[i][0], quaternions[i][1], quaternions[i][2], quaternions[i][3]);
+        transform = transform * glm::toMat4(q);
+
+        glm::vec3 axis = glm::vec3(axes[i][0], axes[i][1], axes[i][2]);
+        transform = glm::rotate(transform, (float)initial_angles[i], axis);
     }
 
 

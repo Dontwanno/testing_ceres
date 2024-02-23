@@ -54,11 +54,6 @@ struct CostFunctor {
         residuals[1] = T(_x[1]) - p[1];
         residuals[2] = T(_x[2]) - p[2];
 
-        // weight position residuals by 5
-        residuals[0] *= T(5.0);
-        residuals[1] *= T(5.0);
-        residuals[2] *= T(5.0);
-
         // 1. Get calculated orientation
         Eigen::Quaternion<T> calculated_orientation(transform.rotation());
 
@@ -204,6 +199,10 @@ void ceres_executer()
         options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
         options.linear_solver_type = ceres::DENSE_QR;
         options.minimizer_progress_to_stdout = true;
+
+        options.function_tolerance = 1e-12;
+        options.gradient_tolerance = 1e-12;
+        options.parameter_tolerance = 1e-12;
 
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);

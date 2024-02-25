@@ -108,7 +108,7 @@ int main(int argc, char* argv[])
 
     // ... set up your robot model ...
     urdf::ModelInterfaceSharedPtr robot;
-    parse_urdf("../6_link.xml", robot);
+    parse_urdf("../3_link.xml", robot);
 
     const auto root = robot->getRoot();
 
@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
 
 
     double pi = glm::pi<double>();
-    std::vector<double> angles = {pi/2, 0, 0, 0, -pi/2, -pi/2};
+    std::vector<double> angles = {pi/2, 0, pi/2, 0};
 
     glm::mat4 transform = glm::mat4(1.0f);
 
@@ -141,7 +141,6 @@ int main(int argc, char* argv[])
     glm::vec3 transformed_link = glm::vec3(transform * glm::vec4(link, 1.0f));
 
     std::cout << "transformed link" << glm::to_string(transformed_link) << std::endl;
-
 
     eigencalc(axes, quaternions, positions, angles);
 

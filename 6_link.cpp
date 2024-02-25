@@ -7,13 +7,71 @@
 #include "glm/gtx/quaternion.hpp"
 # include <glm/gtx/string_cast.hpp>
 
-template <typename T>
-void QuaternionInverse(const T q[4], T q_inverse[4]) {
-    q_inverse[0] = q[0];  // Real component
-    q_inverse[1] = -q[1]; // Imaginary components negated
-    q_inverse[2] = -q[2];
-    q_inverse[3] = -q[3];
-}
+struct Pose3d {
+    Eigen::Vector3d p;
+    Eigen::Quaterniond q;
+
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  };
+
+
+struct NewCostFunctor {
+   NewCostFunctor(const std::vector<std::array<double, 3>>& axes,
+                  const std::vector<std::array<double, 4>>& quaternions,
+                  const std::vector<std::array<double, 3>>& positions,
+                  const Pose3d& target_pose
+                    ) : _axes(axes), _quaternions(quaternions), _positions(positions), _target_pose(target_pose) {};
+
+    template <typename T>
+    bool operator()(const T* const thetas,
+                T* residuals_ptr) const {
+
+        auto transform = Eigen::Transform<T, 3, Eigen::Affine>::Identity();
+
+        for (int i = 0; i < _axes.size(); i++)
+        {
+            Eigen::Vector<T, 3> p = Eigen::Vector<T, 3>(T(_positions[i][0]), T(_positions[i][1]), T(_positions[i][2]));
+
+            Eigen::Quaternion<T> q = Eigen::Quaternion<T>(T(_quaternions[i][0]), T(_quaternions[i][1]), T(_quaternions[i][2]), T(_quaternions[i][3]));
+
+            // apply translation
+            transform.translate(p);
+
+            // apply first rotation
+            transform.rotate(q);
+
+            Eigen::Vector<T, 3> axis = Eigen::Vector<T, 3>(T(_axes[i][0]), T(_axes[i][1]), T(_axes[i][2]));
+            Eigen::AngleAxis<T> angle_axis(thetas[i], axis);
+            // apply second rotation
+            transform.rotate(angle_axis.toRotationMatrix());
+        }
+
+        Eigen::Quaternion<T> transform_quat(transform.rotation());
+
+        // Compute the error between the two orientation estimates.
+        Eigen::Quaternion<T> delta_q =
+            _target_pose.q.template cast<T>() * transform_quat.conjugate();
+
+        Eigen::Vector<T, 3> p_estimated = transform.translation();
+
+
+        // Compute the residuals.
+        // [ position         ]   [ delta_p          ]
+        // [ orientation (3x1)] = [ 2 * delta_q(0:2) ]
+        Eigen::Map<Eigen::Matrix<T, 6, 1>> residuals(residuals_ptr);
+        residuals.template block<3, 1>(0, 0) =
+            p_estimated - _target_pose.p.template cast<T>();
+        residuals.template block<3, 1>(3, 0) = T(2.0) * delta_q.vec();
+
+        return true;
+    }
+
+    Pose3d _target_pose;
+    std::vector<std::array<double, 3>> _axes;
+    std::vector<std::array<double, 4>> _quaternions;
+    std::vector<std::array<double, 3>> _positions;
+
+};
 
 struct CostFunctor {
 
@@ -62,9 +120,6 @@ struct CostFunctor {
         residuals[1] = T(_x[1]) - p[1];
         residuals[2] = T(_x[2]) - p[2];
 
-        //output the transform
-        std::cout << "Transform:\n" << transform.matrix() << std::endl;
-
         // 1. Get calculated orientation
         Eigen::Quaternion<T> calculated_orientation(transform.rotation());
 
@@ -73,27 +128,16 @@ struct CostFunctor {
         // 2. Calculate orientation difference (error)
         Eigen::Quaternion<T> orientation_error = desired_orientation * calculated_orientation.inverse();
 
-        // 3. Convert to Angle-Axis for residuals (optional)
-        Eigen::AngleAxis<T> error_angle_axis(orientation_error);
-
         // 4. Fill residuals
-        residuals[3] = error_angle_axis.angle() * error_angle_axis.axis()(0);
-        residuals[4] = error_angle_axis.angle() * error_angle_axis.axis()(1);
-        residuals[5] = error_angle_axis.angle() * error_angle_axis.axis()(2);
-        residuals[6] = error_angle_axis.angle(); // (Optional: magnitude of the rotation)
+        residuals[3] = T(2.0) * orientation_error.x();
+        residuals[4] = T(2.0) * orientation_error.y();
+        residuals[5] = T(2.0) * orientation_error.z();
 
-        // Eigen::Matrix<T, 3, 3> rotation = transform.rotation();
-        // residuals[3] = T(0) - T(rotation(0));
-        // residuals[4] = T(0) - T(rotation(1));
-        // residuals[5] = T(-1.0) - T(rotation(2));
-        // residuals[6] = T(-1.0) - T(rotation(3));
-        // residuals[7] = T(0) - T(rotation(4));
-        // residuals[8] = T(0) - T(rotation(5));
-        // residuals[9] = T(0) - T(rotation(6));
-        // residuals[10] = T(0) - T(rotation(7));
-        // residuals[11] = T(-1.0) - T(rotation(8));
-
-
+        std::cout << "Residuals: " << std::endl;
+        for (int i = 0; i < 6; i++)
+        {
+            std::cout << residuals[i] << std::endl;
+        }
 
         return true;
     }
@@ -154,6 +198,53 @@ void fill_joints(const urdf::LinkConstSharedPtr& link, std::vector<std::array<do
     }
 }
 
+void eigencalc(const std::vector<std::array<double, 3>>& _axes,
+                const std::vector<std::array<double, 4>>& _quaternions,
+                const std::vector<std::array<double, 3>>& _positions,
+                const std::vector<double>& thetas)
+{
+    auto transform = Eigen::Transform<double, 3, Eigen::Affine>::Identity();
+
+    for (int i = 0; i < _axes.size(); i++)
+    {
+        Eigen::Vector<double, 3> p = Eigen::Vector<double, 3>(double(_positions[i][0]), double(_positions[i][1]), double(_positions[i][2]));
+
+        Eigen::Quaternion<double> q = Eigen::Quaternion<double>(double(_quaternions[i][0]), double(_quaternions[i][1]), double(_quaternions[i][2]), double(_quaternions[i][3]));
+
+        // apply translation
+        transform.translate(p);
+
+        // apply first rotation
+        transform.rotate(q);
+
+        Eigen::Vector<double, 3> axis = Eigen::Vector<double, 3>(double(_axes[i][0]), double(_axes[i][1]), double(_axes[i][2]));
+        Eigen::AngleAxis<double> angle_axis(thetas[i], axis);
+        // apply second rotation
+        transform.rotate(angle_axis.toRotationMatrix());
+    }
+    Eigen::Vector<double, 3> p = transform.translation();
+    auto rotation = transform.rotation();
+    std::cout << "rotation1:" << rotation(0) << " " << rotation(1) << " " << rotation(2) << std::endl;
+    std::cout << "rotation2: " << rotation(3) << " " << rotation(4) << " " << rotation(5) << std::endl;
+    std::cout << "rotation3: " << rotation(6) << " " << rotation(7) << " " << rotation(8) << std::endl;
+    std::cout << "Transform: " << std::endl << transform.matrix() << std::endl;
+
+    // print rotation as quaternion
+    Eigen::Quaternion<double> q(transform.rotation());
+    std::cout << "Quaternion: " << q.w() << " " << q.x() << " " << q.y() << " " << q.z() << std::endl;
+}
+
+
+std::vector<double> random_angles()
+{
+    std::vector<double> angles;
+    for (int i = 0; i < 6; i++)
+    {
+        angles.push_back((double)rand() / RAND_MAX * 2 * 3.14159 - 3.14159);
+    }
+    return angles;
+}
+
 void ceres_executer()
 {
     std::vector<std::array<double, 3>> axes;
@@ -171,32 +262,39 @@ void ceres_executer()
 
     double mypi = glm::pi<double>();
 
-    std::vector<double> angles = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    std::vector<double> initial_angles = {mypi, -mypi/2, 0, 0,0 ,-mypi/2};
-    const std::vector<double> target_pos = {-4.0, 0.0, 1.0};
-    const std::vector<double> target_or = {0, 0.0, 1, 0};
+    std::vector<double> angles = random_angles();
+    const std::vector<double> initial_angles = {0, 0.0, 0.0, 0.0, mypi/2, mypi/2};
+    const std::vector<double> target_pos = {1.0, 0.0, 4.0};
+    const std::vector<double> target_or = {0, 0, 1, 0};
 
+    Pose3d target;
+    target.p = Eigen::Vector3d(target_pos[0], target_pos[1], target_pos[2]);
+    target.q = Eigen::Quaterniond(target_or[0], target_or[1], target_or[2], target_or[3]);
 
     ceres::Problem problem;
 
     ceres::CostFunction* cost_function =
-        new ceres::AutoDiffCostFunction<CostFunctor, 7, 6>(new CostFunctor(axes, quaternions, positions, target_pos.data(), target_or.data()));
+        new ceres::AutoDiffCostFunction<CostFunctor, 6, 6>(new CostFunctor(axes, quaternions, positions, target_pos.data(), target_or.data()));
+        // new ceres::AutoDiffCostFunction<CostFunctor, 7, 6>(new CostFunctor(axes, quaternions, positions, target_pos.data(), target_or.data()));
+
+    ceres::CostFunction* new_cost_function =
+        new ceres::AutoDiffCostFunction<NewCostFunctor, 6, 6>(new NewCostFunctor(axes, quaternions, positions, target));
 
     problem.AddResidualBlock(cost_function, nullptr, angles.data());
 
-    problem.SetParameterLowerBound(angles.data(), 0, -3.14159);
-    problem.SetParameterLowerBound(angles.data(), 1, -3.14159);
-    problem.SetParameterLowerBound(angles.data(), 2, -3.14159);
-    problem.SetParameterLowerBound(angles.data(), 3, -3.14159);
-    problem.SetParameterLowerBound(angles.data(), 4, -3.14159);
-    problem.SetParameterLowerBound(angles.data(), 5, -3.14159);
+    // problem.SetParameterLowerBound(angles.data(), 0, -EIGEN_PI);
+    // problem.SetParameterLowerBound(angles.data(), 1, -EIGEN_PI);
+    // problem.SetParameterLowerBound(angles.data(), 2, -EIGEN_PI);
+    // problem.SetParameterLowerBound(angles.data(), 3, -EIGEN_PI);
+    // problem.SetParameterLowerBound(angles.data(), 4, -EIGEN_PI);
+    // problem.SetParameterLowerBound(angles.data(), 5, -EIGEN_PI);
 
-    problem.SetParameterUpperBound(angles.data(), 0, 3.14159);
-    problem.SetParameterUpperBound(angles.data(), 1, 3.14159);
-    problem.SetParameterUpperBound(angles.data(), 2, 3.14159);
-    problem.SetParameterUpperBound(angles.data(), 3, 3.14159);
-    problem.SetParameterUpperBound(angles.data(), 4, 3.14159);
-    problem.SetParameterUpperBound(angles.data(), 5, 3.14159);
+    // problem.SetParameterUpperBound(angles.data(), 0, EIGEN_PI);
+    // problem.SetParameterUpperBound(angles.data(), 1, EIGEN_PI);
+    // problem.SetParameterUpperBound(angles.data(), 2, EIGEN_PI);
+    // problem.SetParameterUpperBound(angles.data(), 3, EIGEN_PI);
+    // problem.SetParameterUpperBound(angles.data(), 4, EIGEN_PI);
+    // problem.SetParameterUpperBound(angles.data(), 5, EIGEN_PI);
 
 
     ceres::Solver::Options options;
@@ -205,8 +303,11 @@ void ceres_executer()
     options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     // options.function_tolerance = 1e-16;
     // options.parameter_tolerance = 1e-16;
+    options.check_gradients = true;
     options.linear_solver_type = ceres::DENSE_QR;
-    options.minimizer_progress_to_stdout = true;
+    // options.minimizer_progress_to_stdout = true;
+    options.max_num_iterations = 1000;
+
 
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
@@ -260,6 +361,8 @@ void ceres_executer()
         glm::vec4 row = transpose(transform)[i];
         std::cout << glm::to_string(row) << std::endl;
     }
+
+    eigencalc(axes, quaternions, positions, initial_angles);
 }
 
 int main() {
